@@ -63,7 +63,7 @@ type Range struct {
 
 const LineEnd = 1 << 30
 
-func Make(target *targets.Target, vm, objDir, srcDir, buildDir string,
+func Make(target *targets.Target, vm, objDir, srcDir, buildDir string, splitBuild bool,
 	moduleObj []string, modules []host.KernelModule) (*Impl, error) {
 	if objDir == "" {
 		return nil, fmt.Errorf("kernel obj directory is not specified")
@@ -74,5 +74,10 @@ func Make(target *targets.Target, vm, objDir, srcDir, buildDir string,
 	if vm == "gvisor" {
 		return makeGvisor(target, objDir, srcDir, buildDir, modules)
 	}
-	return makeELF(target, objDir, srcDir, buildDir, moduleObj, modules)
+	if splitBuild == true {
+		delimiters := []string{"/aosp/", "/private/", "/gs/"}
+		return makeELF(target, objDir, srcDir, buildDir, delimiters, moduleObj, modules)
+	} else {
+		return makeELF(target, objDir, srcDir, buildDir, nil, moduleObj, modules)
+	}
 }

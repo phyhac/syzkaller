@@ -16,7 +16,7 @@ import (
 	"github.com/google/syzkaller/sys/targets"
 )
 
-func makeELF(target *targets.Target, objDir, srcDir, buildDir string,
+func makeELF(target *targets.Target, objDir, srcDir, buildDir string, splitBuildDelimiters []string,
 	moduleObj []string, hostModules []host.KernelModule) (*Impl, error) {
 	var pcFixUpStart, pcFixUpEnd, pcFixUpOffset uint64
 	if target.Arch == targets.ARM64 {
@@ -40,6 +40,7 @@ func makeELF(target *targets.Target, objDir, srcDir, buildDir string,
 		objDir:                objDir,
 		srcDir:                srcDir,
 		buildDir:              buildDir,
+		splitBuildDelimiters:  splitBuildDelimiters,
 		moduleObj:             moduleObj,
 		hostModules:           hostModules,
 		pcFixUpStart:          pcFixUpStart,

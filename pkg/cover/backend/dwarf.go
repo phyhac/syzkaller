@@ -11,7 +11,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -24,12 +26,13 @@ import (
 )
 
 type dwarfParams struct {
-	target      *targets.Target
-	objDir      string
-	srcDir      string
-	buildDir    string
-	moduleObj   []string
-	hostModules []host.KernelModule
+	target               *targets.Target
+	objDir               string
+	srcDir               string
+	buildDir             string
+	splitBuildDelimiters []string
+	moduleObj            []string
+	hostModules          []host.KernelModule
 	// Kernel coverage PCs in the [pcFixUpStart,pcFixUpEnd) range are offsetted by pcFixUpOffset.
 	pcFixUpStart          uint64
 	pcFixUpEnd            uint64
@@ -95,6 +98,7 @@ func makeDWARFUnsafe(params *dwarfParams) (*Impl, error) {
 	objDir := params.objDir
 	srcDir := params.srcDir
 	buildDir := params.buildDir
+	splitBuildDelimiters := params.splitBuildDelimiters
 	modules, err := discoverModules(target, objDir, params.moduleObj, params.hostModules)
 	if err != nil {
 		return nil, err
@@ -175,7 +179,7 @@ func makeDWARFUnsafe(params *dwarfParams) (*Impl, error) {
 			continue // drop the unit
 		}
 		// TODO: objDir won't work for out-of-tree modules.
-		unit.Name, unit.Path = cleanPath(unit.Name, objDir, srcDir, buildDir)
+		unit.Name, unit.Path = cleanPath(unit.Name, objDir, srcDir, buildDir, splitBuildDelimiters)
 		allUnits[nunit] = unit
 		nunit++
 	}
@@ -191,7 +195,7 @@ func makeDWARFUnsafe(params *dwarfParams) (*Impl, error) {
 		Units:   allUnits,
 		Symbols: allSymbols,
 		Symbolize: func(pcs map[*Module][]uint64) ([]Frame, error) {
-			return symbolize(target, objDir, srcDir, buildDir, pcs)
+			return symbolize(target, objDir, srcDir, buildDir, splitBuildDelimiters, pcs)
 		},
 		RestorePC: makeRestorePC(params, pcBase),
 	}
@@ -330,7 +334,7 @@ func readTextRanges(debugInfo *dwarf.Data, module *Module, pcFix pcFixFn) (
 	return ranges, units, nil
 }
 
-func symbolizeModule(target *targets.Target, objDir, srcDir, buildDir string,
+func symbolizeModule(target *targets.Target, objDir, srcDir, buildDir string, splitBuildDelimiters []string,
 	mod *Module, pcs []uint64) ([]Frame, error) {
 	procs := runtime.GOMAXPROCS(0) / 2
 	if need := len(pcs) / 1000; procs > need {
@@ -388,7 +392,7 @@ func symbolizeModule(target *targets.Target, objDir, srcDir, buildDir string,
 			err0 = res.err
 		}
 		for _, frame := range res.frames {
-			name, path := cleanPath(frame.File, objDir, srcDir, buildDir)
+			name, path := cleanPath(frame.File, objDir, srcDir, buildDir, splitBuildDelimiters)
 			frames = append(frames, Frame{
 				Module: mod,
 				PC:     frame.PC + mod.Addr,
@@ -409,11 +413,11 @@ func symbolizeModule(target *targets.Target, objDir, srcDir, buildDir string,
 	return frames, nil
 }
 
-func symbolize(target *targets.Target, objDir, srcDir, buildDir string,
+func symbolize(target *targets.Target, objDir, srcDir, buildDir string, splitBuildDelimiters []string,
 	pcs map[*Module][]uint64) ([]Frame, error) {
 	var frames []Frame
 	for mod, pcs1 := range pcs {
-		frames1, err := symbolizeModule(target, objDir, srcDir, buildDir, mod, pcs1)
+		frames1, err := symbolizeModule(target, objDir, srcDir, buildDir, splitBuildDelimiters, mod, pcs1)
 		if err != nil {
 			return nil, err
 		}
@@ -455,8 +459,43 @@ func readCoverPoints(target *targets.Target, info *symbolInfo, data []byte) ([2]
 	return pcs, nil
 }
 
-func cleanPath(path, objDir, srcDir, buildDir string) (string, string) {
+func cleanPathAndroid(path, srcDir string, delimiters []string) (string, string) {
 	filename := ""
+	fmt.Printf("delimiters: %v\n", delimiters)
+
+	reStr := ".*(" + strings.Join(delimiters, "|") + ")(.*)"
+	re, err := regexp.Compile(reStr)
+	if err == nil {
+		match := re.FindStringSubmatch(path)
+		if len(match) > 2 {
+			delimiter := match[1]
+			path = match[2]
+			filename = srcDir + delimiter + path
+			fmt.Printf("new path: %v\n", path)
+			fmt.Printf("new filename: %v\n", filename)
+			return path, filename
+		} else {
+			for _, delimiter := range delimiters {
+				filename = srcDir + delimiter + path
+				if _, err := os.Stat(filename); err == nil {
+					fmt.Printf("new path: %v\n", path)
+					fmt.Printf("new filename: %v\n", filename)
+					return path, filename
+				}
+			}
+		}
+	}
+	return "", ""
+}
+
+func cleanPath(path, objDir, srcDir, buildDir string, splitBuildDelimiters []string) (string, string) {
+	filename := ""
+
+	path = filepath.Clean(path)
+	apath, afilename := cleanPathAndroid(path, srcDir, splitBuildDelimiters)
+	if apath != "" {
+		return apath, afilename
+	}
 	absPath := osutil.Abs(path)
 	switch {
 	case strings.HasPrefix(absPath, objDir):
