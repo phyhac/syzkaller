@@ -179,6 +179,7 @@ static bool flag_collect_signal;
 static bool flag_dedup_cover;
 static bool flag_threaded;
 static bool flag_coverage_filter;
+static bool flag_irq_sched; // schdule interrupts during execution by thuffle
 
 // If true, then executor should write the comparisons data to fuzzer.
 static bool flag_comparisons;
@@ -674,12 +675,19 @@ void receive_execute()
 	flag_comparisons = req.exec_flags & (1 << 3);
 	flag_threaded = req.exec_flags & (1 << 4);
 	flag_coverage_filter = req.exec_flags & (1 << 5);
+	// new flag for thuffle irq schedule
+	flag_irq_sched = req.exec_flags & (1 << 6);
 
 	debug("[%llums] exec opts: procid=%llu threaded=%d cover=%d comps=%d dedup=%d signal=%d"
-	      " timeouts=%llu/%llu/%llu prog=%llu filter=%d\n",
+	      " timeouts=%llu/%llu/%llu prog=%llu filter=%d irq_sched=%d\n",
 	      current_time_ms() - start_time_ms, procid, flag_threaded, flag_collect_cover,
 	      flag_comparisons, flag_dedup_cover, flag_collect_signal, syscall_timeout_ms,
-	      program_timeout_ms, slowdown_scale, req.prog_size, flag_coverage_filter);
+	      program_timeout_ms, slowdown_scale, req.prog_size, flag_coverage_filter,
+		  flag_irq_sched);
+	if (flag_irq_sched && flag_threaded) {
+		failmsg("bad opts", "when flag_irq_sched(=%d) is set, flag_threaded(=%d) can't be set\n", 
+			flag_irq_sched, flag_threaded);
+	}
 	if (syscall_timeout_ms == 0 || program_timeout_ms <= syscall_timeout_ms || slowdown_scale == 0)
 		failmsg("bad timeouts", "syscall=%llu, program=%llu, scale=%llu",
 			syscall_timeout_ms, program_timeout_ms, slowdown_scale);

@@ -19,6 +19,7 @@ var (
 	flagSandboxArg = flag.Int("sandbox_arg", 0, "argument for sandbox runner to adjust it via config")
 	flagDebug      = flag.Bool("debug", false, "debug output from executor")
 	flagSlowdown   = flag.Int("slowdown", 1, "execution slowdown caused by emulation/instrumentation")
+	flagIrqSched   = flag.Bool("irqsched", false, "schdule interrupts during execution by thuffle")
 )
 
 func Default(target *prog.Target) (*ipc.Config, *ipc.ExecOpts, error) {
@@ -49,6 +50,11 @@ func Default(target *prog.Target) (*ipc.Config, *ipc.ExecOpts, error) {
 	}
 	if *flagSignal {
 		opts.Flags |= ipc.FlagCollectSignal
+	}
+	if *flagIrqSched {
+		// when IrqSched is enable, Threaded ought to be disable
+		opts.Flags |= ipc.FlagIrqSched
+		opts.Flags &= ^ipc.FlagThreaded
 	}
 
 	return c, opts, nil

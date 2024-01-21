@@ -823,6 +823,7 @@ func (mgr *Manager) runInstanceInner(index int, instanceName string) (*report.Re
 		Debug:     *flagDebug,
 		Test:      false,
 		Runtest:   false,
+		IrqSched:  mgr.cfg.IrqSched,
 		Optional: &instance.OptionalFuzzerArgs{
 			Slowdown:   mgr.cfg.Timeouts.Slowdown,
 			RawCover:   mgr.cfg.RawCover,

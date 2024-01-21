@@ -109,6 +109,19 @@ type Config struct {
 	// but to not oversubscribe CPU and memory too severe to not cause OOMs and false hangs/stalls.
 	Procs int `json:"procs"`
 
+	// Mode for thuffle interrupt scheduling, default value is false.
+	// Enable the executor inserts given interrupt related to the syscall sequence.
+	// Require supports from QEMU/KVM emulation framework.
+	// To enhance the exploit power to certain subsystem, choose the irq by EnabledIrqs and DisabledIrqs
+	IrqSched bool `json:"irqsched"`
+
+	// List of irqs to test (optional). For example:
+	// TODO(Lai): fill the examples.
+	// "enable_irqs": [ "mmap", "openat$ashmem", "ioctl$ASHMEM*" ]
+	EnabledIrqs []string `json:"enable_irqs,omitempty"`
+	// List of irqs that should be treated as disabled (optional).
+	DisabledIrqs []string `json:"disable_irqs,omitempty"`
+
 	// Maximum number of logs to store per crash (default: 100).
 	MaxCrashLogs int `json:"max_crash_logs"`
 
