@@ -31,6 +31,7 @@ const (
 	execInstrCopyin
 	execInstrCopyout
 	execInstrSetProps
+	execInstrIrqSched
 )
 
 const (
@@ -71,6 +72,7 @@ func (p *Prog) SerializeForExec(buffer []byte) (int, error) {
 		eof:    false,
 		args:   make(map[Arg]argInfo),
 	}
+	w.serializeIrqSchedule(p)
 	for _, c := range p.Calls {
 		w.csumMap, w.csumUses = calcChecksumsCall(c)
 		w.serializeCall(c)
@@ -80,6 +82,19 @@ func (p *Prog) SerializeForExec(buffer []byte) (int, error) {
 		return 0, ErrExecBufferTooSmall
 	}
 	return len(buffer) - len(w.buf), nil
+}
+
+func (w *execContext) serializeIrqSchedule(p *Prog) {
+	w.write(execInstrIrqSched)
+	maskedSched := p.IrqSchedule.AfterMask()
+	w.write(uint64(len(maskedSched)))
+	for _, sp := range maskedSched {
+		w.write(uint64(sp.CallID))
+		w.write(uint64(sp.IrqLine))
+		w.write(sp.CodeAddr)
+		w.write(sp.MemAddr)
+		w.write(sp.Order)
+	}
 }
 
 func (w *execContext) serializeCall(c *Call) {

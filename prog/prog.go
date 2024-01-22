@@ -6,12 +6,16 @@ package prog
 import (
 	"fmt"
 	"reflect"
+
+	"github.com/google/syzkaller/pkg/thuffle"
 )
 
 type Prog struct {
 	Target   *Target
 	Calls    []*Call
 	Comments []string
+	// add for interrupt schedule
+	IrqSchedule thuffle.IrqSchedule
 }
 
 // These properties are parsed and serialized according to the tag and the type

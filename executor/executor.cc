@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "thuffle/hypercall.h"
 
 #if !GOOS_windows
 #include <unistd.h>
@@ -70,6 +71,9 @@ const int kExtraCoverFd = kCoverFd - 1;
 const int kMaxArgs = 9;
 const int kCoverSize = 256 << 10;
 const int kFailStatus = 67;
+
+// const correspoinding to pkg/thuffle/sched.go
+const int kMaxSizeIrqSchdule = 32;
 
 // Two approaches of dealing with kcov memory.
 const int kCoverOptimizedCount = 12; // the number of kcov instances to be opened inside main()
@@ -199,6 +203,7 @@ const uint64 instr_eof = -1;
 const uint64 instr_copyin = -2;
 const uint64 instr_copyout = -3;
 const uint64 instr_setprops = -4;
+const uint64 instr_irqsched = -5;
 
 const uint64 arg_const = 0;
 const uint64 arg_result = 1;
@@ -275,6 +280,18 @@ struct thread_t {
 	cover_t cov;
 	bool soft_fail_state;
 };
+
+// schdule point correspoinding to pkg/thuffle/sched.go/SchedPoint
+typedef struct sched_point_t {
+	int call_index;
+	uint64 irq_line;
+	uint64 code_addr;
+	uint64 mem_addr;
+	uint64 order;
+} sched_point_t;
+
+static sched_point_t irq_schduler[kMaxSizeIrqSchdule];
+static int sched_size;
 
 static thread_t threads[kMaxThreads];
 static thread_t* last_scheduled;
@@ -869,6 +886,28 @@ void execute_one()
 		if (call_num == instr_setprops) {
 			read_call_props_t(call_props, read_input(&input_pos, false));
 			continue;
+		}
+		if (call_num == instr_irqsched) {
+			sched_size = read_input(&input_pos);
+			if (sched_size > kMaxSizeIrqSchdule) {
+				failmsg("bad irqschdule size", "size=%d, max size=%d", sched_size, kMaxSizeIrqSchdule);
+			}
+			for (int i = 0; i < sched_size; i++) {
+				irq_schduler[i].call_index = read_input(&input_pos);
+				irq_schduler[i].irq_line = read_input(&input_pos);
+				irq_schduler[i].code_addr = read_input(&input_pos);
+				irq_schduler[i].mem_addr = read_input(&input_pos);
+				irq_schduler[i].order = read_input(&input_pos);
+			}
+			continue;
+		}
+		
+		// Before normal syscall, install the schedule hardware breakpoints.
+		for (int i = 0; i < sched_size; i++) {
+			sched_point_t sp = irq_schduler[i];
+			if (sp.call_index == call_index) {
+				hypercall(HCALL_INSTALL_BP, sp.code_addr, sp.irq_line, sp.order);
+			}
 		}
 
 		// Normal syscall.
